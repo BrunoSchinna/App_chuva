@@ -11,7 +11,7 @@ from streamlit_folium import st_folium
 # ==========================================
 st.set_page_config(page_title="SIG Climático Pro", page_icon="🌤️", layout="wide")
 
-# CSS customizado
+# CSS customizado para os botões e espaçamentos
 estilo_customizado = """
     <style>
     #MainMenu {visibility: hidden;}
@@ -37,9 +37,9 @@ st.markdown(estilo_customizado, unsafe_allow_html=True)
 col_titulo, col_logo = st.columns([4, 1])
 with col_titulo:
     st.title("🌤️ SIG Climático Pro")
-    st.markdown("**Sistema Inteligente de Extração Hidrometeorológica (ERA5, GFS e GloFAS)**")
+    st.markdown("**Sistema Inteligente de Extração Hidrometeorológica (ERA5 + GFS)**")
 with col_logo:
-    st.caption("v2.4 - Previsão de Vazões")
+    st.caption("v2.3 - Mapa Ampliado")
 
 st.divider()
 
@@ -73,16 +73,15 @@ with st.sidebar:
     st.subheader("📊 Seleção de Dados")
     var_hist = st.checkbox("🌧️ Histórico Mensal (ERA5)", value=True, help="Puxa dados desde 1981 até a semana atual.")
     var_prev = st.checkbox("🔮 Previsão Diária (GFS)", value=True, help="Puxa a previsão acumulada dos próximos 16 dias.")
-    var_vazao = st.checkbox("🌊 Vazão do Rio (GloFAS)", value=True, help="Hidrograma contínuo: 90 dias passados + 16 dias de previsão modelada.")
     
     st.markdown("---")
     btn_extrair = st.button("🚀 INICIAR EXTRAÇÃO DA NUVEM", type="primary", use_container_width=True)
 
-    # Créditos Legais Atualizados
+    # Créditos Legais
     st.markdown("---")
     st.markdown("<div style='font-size: 0.8em; color: gray;'>", unsafe_allow_html=True)
     st.markdown("<b>📚 Fontes e Licenças:</b>")
-    st.markdown("- <b>ERA5 / GloFAS:</b> Dados fornecidos pelo Copernicus Climate Change Service (C3S) da União Europeia.")
+    st.markdown("- <b>ERA5:</b> Dados gerados pelo programa europeu Copernicus Climate Change Service (C3S).")
     st.markdown("- <b>GFS:</b> Dados fornecidos em domínio público pela NOAA / NCEP.")
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -98,7 +97,7 @@ with col_metrica2:
 # Criação do Mapa Base
 mapa = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=11, control_scale=True)
 
-# Camada do Google Híbrido
+# Camada do Google Híbrido (Satélite + Divisas Municipais/Estaduais + Ruas)
 folium.TileLayer(
     tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
     attr='Google',
@@ -113,6 +112,7 @@ folium.Marker(
     icon=folium.Icon(color="red", icon="cloud", prefix='fa')
 ).add_to(mapa)
 
+# 🔥 ALTERAÇÃO AQUI: Aumentado o "height" de 350 para 550 para melhorar a visualização!
 mapa_resultado = st_folium(mapa, height=550, use_container_width=True, returned_objects=["last_clicked"])
 
 if mapa_resultado.get("last_clicked"):
@@ -128,16 +128,15 @@ if mapa_resultado.get("last_clicked"):
 # LÓGICA DE EXTRAÇÃO E RESULTADOS
 # ==========================================
 if btn_extrair:
-    if not var_hist and not var_prev and not var_vazao:
+    if not var_hist and not var_prev:
         st.warning("⚠️ Selecione pelo menos uma variável no menu lateral antes de prosseguir!")
     else:
         st.divider()
         with st.spinner("📡 Conectando aos supercomputadores globais... Aguarde."):
             df_historico = pd.DataFrame()
             df_previsao = pd.DataFrame()
-            df_vazao = pd.DataFrame()
 
-            # 1. PUXA HISTÓRICO (CHUVA)
+            # 1. PUXA HISTÓRICO
             if var_hist:
                 try:
                     hoje = datetime.date.today()
@@ -158,7 +157,7 @@ if btn_extrair:
                 except Exception as e:
                     st.error(f"❌ Erro ao baixar o histórico: {e}")
 
-            # 2. PUXA PREVISÃO (CHUVA)
+            # 2. PUXA PREVISÃO
             if var_prev:
                 try:
                     url_prev = f"https://api.open-meteo.com/v1/forecast?latitude={st.session_state.lat}&longitude={st.session_state.lon}&daily=precipitation_sum&timezone=America%2FSao_Paulo&forecast_days=16"
@@ -172,29 +171,13 @@ if btn_extrair:
                         })
                 except Exception as e:
                     st.error(f"❌ Erro ao baixar a previsão: {e}")
-            
-            # 3. PUXA VAZÃO (GLOFAS)
-            if var_vazao:
-                try:
-                    # A API de Flood usa um subdomínio específico e permite buscar passado e futuro na mesma requisição
-                    url_vazao = f"https://flood-api.open-meteo.com/v1/flood?latitude={st.session_state.lat}&longitude={st.session_state.lon}&daily=river_discharge&timezone=America%2FSao_Paulo&past_days=90&forecast_days=16"
-                    resp_vazao = requests.get(url_vazao)
-                    
-                    if resp_vazao.status_code == 200:
-                        dados_vazao = resp_vazao.json()
-                        df_vazao = pd.DataFrame({
-                            'Data': pd.to_datetime(dados_vazao['daily']['time']),
-                            'Vazão Simulada (m³/s)': dados_vazao['daily']['river_discharge']
-                        })
-                except Exception as e:
-                    st.error(f"❌ Erro ao baixar a vazão: {e}")
 
             # ==========================================
             # APRESENTAÇÃO DOS GRÁFICOS
             # ==========================================
             st.success("✅ Download concluído com sucesso!")
 
-            tab1, tab2, tab3 = st.tabs(["📈 Histórico (ERA5)", "🔮 Previsão (GFS)", "🌊 Vazão (GloFAS)"])
+            tab1, tab2 = st.tabs(["📈 Histórico (ERA5)", "🔮 Previsão (GFS)"])
 
             with tab1:
                 if not df_historico.empty:
@@ -209,20 +192,11 @@ if btn_extrair:
                     st.bar_chart(data=df_previsao, x='Data', y='Chuva Prevista (mm/dia)', color="#2ecc71")
                     with st.expander("👁️ Visualizar Planilha de Previsão"):
                         st.dataframe(df_previsao.style.format({'Data': lambda x: x.strftime('%d/%m/%Y')}), use_container_width=True)
-            
-            with tab3:
-                if not df_vazao.empty:
-                    st.markdown("#### Hidrograma Simulado (Últimos 90 dias + 16 dias futuros)")
-                    # Corrigindo falhas nulas se existirem
-                    df_vazao = df_vazao.dropna()
-                    st.line_chart(data=df_vazao, x='Data', y='Vazão Simulada (m³/s)', color="#2c3e50")
-                    with st.expander("👁️ Visualizar Planilha de Vazão"):
-                        st.dataframe(df_vazao.style.format({'Data': lambda x: x.strftime('%d/%m/%Y')}), use_container_width=True)
 
             # ==========================================
             # BOTÃO DE DOWNLOAD ELEGANTE
             # ==========================================
-            if not df_historico.empty or not df_previsao.empty or not df_vazao.empty:
+            if not df_historico.empty or not df_previsao.empty:
                 st.markdown("<br>", unsafe_allow_html=True)
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
@@ -234,17 +208,13 @@ if btn_extrair:
                         df_prev_save = df_previsao.copy()
                         df_prev_save['Data'] = df_prev_save['Data'].dt.strftime('%Y-%m-%d')
                         df_prev_save.to_excel(writer, sheet_name="Previsao_GFS", index=False)
-                    if not df_vazao.empty:
-                        df_vazao_save = df_vazao.copy()
-                        df_vazao_save['Data'] = df_vazao_save['Data'].dt.strftime('%Y-%m-%d')
-                        df_vazao_save.to_excel(writer, sheet_name="Vazao_GloFAS", index=False)
                 
                 col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
                 with col_btn2:
                     st.download_button(
                         label="💾 BAIXAR DADOS EM EXCEL",
                         data=buffer.getvalue(),
-                        file_name=f"Dados_Hidrologicos_{st.session_state.lat:.2f}_{st.session_state.lon:.2f}.xlsx",
+                        file_name=f"Dados_Climaticos_{st.session_state.lat:.2f}_{st.session_state.lon:.2f}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary",
                         use_container_width=True
