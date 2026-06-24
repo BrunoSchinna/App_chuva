@@ -80,9 +80,9 @@ with st.sidebar:
     # Créditos Legais
     st.markdown("---")
     st.markdown("<div style='font-size: 0.8em; color: gray;'>", unsafe_allow_html=True)
-    st.markdown("<b>📚 Fontes e Licenças:</b>")
-    st.markdown("- <b>ERA5:</b> Dados gerados pelo programa europeu Copernicus Climate Change Service (C3S).")
-    st.markdown("- <b>GFS:</b> Dados fornecidos em domínio público pela NOAA / NCEP.")
+    st.markdown("📚 Fontes e Licenças:")
+    st.markdown("-ERA5:Dados gerados pelo programa europeu Copernicus Climate Change Service (C3S).")
+    st.markdown("-GFS:Dados fornecidos em domínio público pela NOAA / NCEP.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
