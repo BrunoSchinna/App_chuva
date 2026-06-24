@@ -80,9 +80,9 @@ with st.sidebar:
     # Créditos Legais
     st.markdown("---")
     st.markdown("<div style='font-size: 0.8em; color: gray;'>", unsafe_allow_html=True)
-    st.markdown("<b>📚 Fontes e Licenças:</b>")
-    st.markdown("- <b>ERA5:</b> Dados gerados pelo programa europeu Copernicus Climate Change Service (C3S).")
-    st.markdown("- <b>GFS:</b> Dados fornecidos em domínio público pela NOAA / NCEP.")
+    st.markdown("📚 Fontes e Licenças:")
+    st.markdown("- ERA5: Dados gerados pelo programa europeu Copernicus Climate Change Service (C3S).")
+    st.markdown("- GFS: Dados fornecidos em domínio público pela NOAA / NCEP.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
@@ -113,7 +113,7 @@ folium.Marker(
 ).add_to(mapa)
 
 # 🔥 ALTERAÇÃO AQUI: Aumentado o "height" de 350 para 550 para melhorar a visualização!
-mapa_resultado = st_folium(mapa, height=550, use_container_width=True, returned_objects=["last_clicked"])
+mapa_resultado = st_folium(mapa, height=700, use_container_width=True, returned_objects=["last_clicked"])
 
 if mapa_resultado.get("last_clicked"):
     click_lat = mapa_resultado["last_clicked"]["lat"]
