@@ -5,13 +5,14 @@ import datetime
 import io
 import folium
 from streamlit_folium import st_folium
+import plotly.express as px
+import plotly.graph_objects as go
 
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA E CSS
 # ==========================================
 st.set_page_config(page_title="SIG Climático Pro", page_icon="🌤️", layout="wide")
 
-# CSS customizado para os botões e espaçamentos
 estilo_customizado = """
     <style>
     #MainMenu {visibility: hidden;}
@@ -39,7 +40,7 @@ with col_titulo:
     st.title("🌤️ SIG Climático Pro")
     st.markdown("**Sistema Inteligente de Extração Hidrometeorológica (ERA5 + GFS)**")
 with col_logo:
-    st.caption("v2.3 - Mapa Ampliado")
+    st.caption("v3.0 - Dashboard Avançado")
 
 st.divider()
 
@@ -50,6 +51,8 @@ if "lat" not in st.session_state:
     st.session_state.lat = -25.4200
 if "lon" not in st.session_state:
     st.session_state.lon = -49.2700
+if "elevacao" not in st.session_state:
+    st.session_state.elevacao = "Aguardando..."
 
 # ==========================================
 # MENU LATERAL (CONTROLES)
@@ -67,6 +70,7 @@ with st.sidebar:
     if lat_input != st.session_state.lat or lon_input != st.session_state.lon:
         st.session_state.lat = lat_input
         st.session_state.lon = lon_input
+        st.session_state.elevacao = "Aguardando..." # Reseta a altitude ao mudar de local
         st.rerun()
 
     st.markdown("---")
@@ -80,24 +84,25 @@ with st.sidebar:
     # Créditos Legais
     st.markdown("---")
     st.markdown("<div style='font-size: 0.8em; color: gray;'>", unsafe_allow_html=True)
-    st.markdown("📚 Fontes e Licenças:")
-    st.markdown("-ERA5:Dados gerados pelo programa europeu Copernicus Climate Change Service (C3S).")
-    st.markdown("-GFS:Dados fornecidos em domínio público pela NOAA / NCEP.")
+    st.markdown("<b>📚 Fontes e Licenças:</b>")
+    st.markdown("- <b>ERA5:</b> Dados gerados pelo Copernicus Climate Change Service (C3S).")
+    st.markdown("- <b>GFS:</b> Dados fornecidos em domínio público pela NOAA / NCEP.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
 # CORPO PRINCIPAL (MAPA E DASHBOARD)
 # ==========================================
-col_metrica1, col_metrica2, col_vazio = st.columns([1, 1, 2])
+col_metrica1, col_metrica2, col_metrica3, col_vazio = st.columns([1, 1, 1, 1])
 with col_metrica1:
     st.metric(label="Latitude Ativa", value=f"{st.session_state.lat:.4f}")
 with col_metrica2:
     st.metric(label="Longitude Ativa", value=f"{st.session_state.lon:.4f}")
+with col_metrica3:
+    st.metric(label="Altitude (Topografia)", value=f"{st.session_state.elevacao}")
 
 # Criação do Mapa Base
 mapa = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=11, control_scale=True)
 
-# Camada do Google Híbrido (Satélite + Divisas Municipais/Estaduais + Ruas)
 folium.TileLayer(
     tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
     attr='Google',
@@ -112,8 +117,7 @@ folium.Marker(
     icon=folium.Icon(color="red", icon="cloud", prefix='fa')
 ).add_to(mapa)
 
-# 🔥 ALTERAÇÃO AQUI: Aumentado o "height" de 350 para 550 para melhorar a visualização!
-mapa_resultado = st_folium(mapa, height=550, use_container_width=True, returned_objects=["last_clicked"])
+mapa_resultado = st_folium(mapa, height=450, use_container_width=True, returned_objects=["last_clicked"])
 
 if mapa_resultado.get("last_clicked"):
     click_lat = mapa_resultado["last_clicked"]["lat"]
@@ -122,6 +126,7 @@ if mapa_resultado.get("last_clicked"):
     if click_lat != st.session_state.lat or click_lon != st.session_state.lon:
         st.session_state.lat = click_lat
         st.session_state.lon = click_lon
+        st.session_state.elevacao = "Aguardando..."
         st.rerun()
 
 # ==========================================
@@ -134,9 +139,10 @@ if btn_extrair:
         st.divider()
         with st.spinner("📡 Conectando aos supercomputadores globais... Aguarde."):
             df_historico = pd.DataFrame()
+            df_clima = pd.DataFrame()
             df_previsao = pd.DataFrame()
 
-            # 1. PUXA HISTÓRICO
+            # 1. PUXA HISTÓRICO E CLIMATOLOGIA
             if var_hist:
                 try:
                     hoje = datetime.date.today()
@@ -148,16 +154,35 @@ if btn_extrair:
                     
                     if resp_hist.status_code == 200:
                         dados_hist = resp_hist.json()
+                        
+                        # Atualiza a altitude na memória do sistema
+                        elevacao = dados_hist.get("elevation", "N/A")
+                        st.session_state.elevacao = f"{elevacao} m"
+
                         df_bruto = pd.DataFrame({
                             'Data': pd.to_datetime(dados_hist['daily']['time']),
-                            'Chuva Histórica (mm/mês)': dados_hist['daily']['precipitation_sum']
+                            'Chuva_Observada': dados_hist['daily']['precipitation_sum']
                         })
                         df_bruto.set_index('Data', inplace=True)
+                        
+                        # Histórico Mensal Contínuo
                         df_historico = df_bruto.resample('MS').sum().reset_index()
+                        
+                        # Cálculo da Normal Climatológica (Média por Mês)
+                        df_temp = df_bruto.copy()
+                        df_temp['Mes'] = df_temp.index.month
+                        # Agrupa por ano e mês, soma, depois tira a média de cada mês
+                        df_soma_mensal = df_temp.groupby([df_temp.index.year, 'Mes'])['Chuva_Observada'].sum().reset_index()
+                        df_clima = df_soma_mensal.groupby('Mes')['Chuva_Observada'].mean().reset_index()
+                        
+                        meses_nome = {1:'Jan', 2:'Fev', 3:'Mar', 4:'Abr', 5:'Mai', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Set', 10:'Out', 11:'Nov', 12:'Dez'}
+                        df_clima['Mês'] = df_clima['Mes'].map(meses_nome)
+                        df_clima.rename(columns={'Chuva_Observada': 'Media_Historica'}, inplace=True)
+                        
                 except Exception as e:
                     st.error(f"❌ Erro ao baixar o histórico: {e}")
 
-            # 2. PUXA PREVISÃO
+            # 2. PUXA PREVISÃO E CALCULA ACUMULADO
             if var_prev:
                 try:
                     url_prev = f"https://api.open-meteo.com/v1/forecast?latitude={st.session_state.lat}&longitude={st.session_state.lon}&daily=precipitation_sum&timezone=America%2FSao_Paulo&forecast_days=16"
@@ -165,36 +190,85 @@ if btn_extrair:
                     
                     if resp_prev.status_code == 200:
                         dados_prev = resp_prev.json()
+                        
+                        if st.session_state.elevacao == "Aguardando...":
+                            elevacao = dados_prev.get("elevation", "N/A")
+                            st.session_state.elevacao = f"{elevacao} m"
+
                         df_previsao = pd.DataFrame({
                             'Data': pd.to_datetime(dados_prev['daily']['time']),
-                            'Chuva Prevista (mm/dia)': dados_prev['daily']['precipitation_sum']
+                            'Chuva_Diaria': dados_prev['daily']['precipitation_sum']
                         })
+                        # Cria a curva acumulada somando os dias
+                        df_previsao['Chuva_Acumulada'] = df_previsao['Chuva_Diaria'].cumsum()
+
                 except Exception as e:
                     st.error(f"❌ Erro ao baixar a previsão: {e}")
 
             # ==========================================
-            # APRESENTAÇÃO DOS GRÁFICOS
+            # APRESENTAÇÃO DOS GRÁFICOS COM PLOTLY
             # ==========================================
-            st.success("✅ Download concluído com sucesso!")
+            st.success("✅ Download e Cálculos Hidrológicos concluídos!")
+            
+            # Força o Streamlit a recarregar a tela para atualizar a métrica de Altitude lá em cima
+            if "ja_atualizou_altitude" not in st.session_state:
+                st.session_state.ja_atualizou_altitude = True
+                st.rerun()
+            else:
+                del st.session_state["ja_atualizou_altitude"]
 
-            tab1, tab2 = st.tabs(["📈 Histórico (ERA5)", "🔮 Previsão (GFS)"])
+            tab1, tab2 = st.tabs(["📈 Histórico e Climatologia", "🔮 Previsão (16 Dias)"])
 
             with tab1:
                 if not df_historico.empty:
-                    st.markdown("#### Acumulado Mensal Observado")
-                    st.line_chart(data=df_historico, x='Data', y='Chuva Histórica (mm/mês)', color="#3498db")
-                    with st.expander("👁️ Visualizar Planilha de Histórico"):
-                        st.dataframe(df_historico.style.format({'Data': lambda x: x.strftime('%Y-%m')}), use_container_width=True)
+                    st.markdown("#### Normal Climatológica (Média de 1981 a Hoje)")
+                    fig_clima = px.bar(df_clima, x='Mês', y='Media_Historica', text_auto='.1f', 
+                                       labels={'Media_Historica': 'Chuva Esperada (mm)'}, 
+                                       template="plotly_white")
+                    fig_clima.update_traces(marker_color='#34495e', textfont_size=12, textangle=0, textposition="outside", cliponaxis=False)
+                    st.plotly_chart(fig_clima, use_container_width=True)
+                    
+                    st.divider()
+
+                    st.markdown("#### Série Histórica Mensal Completa")
+                    fig_hist = px.line(df_historico, x='Data', y='Chuva_Observada', 
+                                       labels={'Chuva_Observada': 'Chuva Total (mm)', 'Data': 'Ano'},
+                                       template="plotly_white")
+                    fig_hist.update_traces(line_color='#3498db', line_width=2)
+                    st.plotly_chart(fig_hist, use_container_width=True)
 
             with tab2:
                 if not df_previsao.empty:
-                    st.markdown("#### Chuva Prevista (Próximos 16 dias)")
-                    st.bar_chart(data=df_previsao, x='Data', y='Chuva Prevista (mm/dia)', color="#2ecc71")
-                    with st.expander("👁️ Visualizar Planilha de Previsão"):
-                        st.dataframe(df_previsao.style.format({'Data': lambda x: x.strftime('%d/%m/%Y')}), use_container_width=True)
+                    st.markdown("#### Hidrograma Meteorológico (Diário vs Acumulado)")
+                    
+                    # Gráfico Combinado: Barras (Diário) + Linha (Acumulado)
+                    fig_prev = go.Figure()
+                    
+                    # Barras de chuva diária
+                    fig_prev.add_trace(go.Bar(
+                        x=df_previsao['Data'], y=df_previsao['Chuva_Diaria'], 
+                        name='Chuva Diária (mm)', marker_color='#2ecc71',
+                        text=df_previsao['Chuva_Diaria'].round(1), textposition='auto'
+                    ))
+                    
+                    # Linha de chuva acumulada
+                    fig_prev.add_trace(go.Scatter(
+                        x=df_previsao['Data'], y=df_previsao['Chuva_Acumulada'], 
+                        name='Volume Acumulado (mm)', mode='lines+markers', 
+                        line=dict(color='#e74c3c', width=3),
+                        marker=dict(size=8)
+                    ))
+                    
+                    fig_prev.update_layout(
+                        template="plotly_white", 
+                        hovermode="x unified",
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    
+                    st.plotly_chart(fig_prev, use_container_width=True)
 
             # ==========================================
-            # BOTÃO DE DOWNLOAD ELEGANTE
+            # BOTÃO DE DOWNLOAD
             # ==========================================
             if not df_historico.empty or not df_previsao.empty:
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -204,6 +278,11 @@ if btn_extrair:
                         df_hist_save = df_historico.copy()
                         df_hist_save['Data'] = df_hist_save['Data'].dt.strftime('%Y-%m')
                         df_hist_save.to_excel(writer, sheet_name="Historico_ERA5", index=False)
+                        
+                        df_clima_save = df_clima[['Mês', 'Media_Historica']].copy()
+                        df_clima_save['Media_Historica'] = df_clima_save['Media_Historica'].round(2)
+                        df_clima_save.to_excel(writer, sheet_name="Normal_Climatologica", index=False)
+                        
                     if not df_previsao.empty:
                         df_prev_save = df_previsao.copy()
                         df_prev_save['Data'] = df_prev_save['Data'].dt.strftime('%Y-%m-%d')
