@@ -11,7 +11,7 @@ from streamlit_folium import st_folium
 # ==========================================
 st.set_page_config(page_title="SIG Climático Pro", page_icon="🌤️", layout="wide")
 
-# CSS customizado corrigido (agora a setinha da barra lateral aparece!)
+# CSS customizado para os botões e espaçamentos
 estilo_customizado = """
     <style>
     #MainMenu {visibility: hidden;}
@@ -39,7 +39,7 @@ with col_titulo:
     st.title("🌤️ SIG Climático Pro")
     st.markdown("**Sistema Inteligente de Extração Hidrometeorológica (ERA5 + GFS)**")
 with col_logo:
-    st.caption("v2.1 - Híbrido Mobile")
+    st.caption("v2.3 - Mapa Ampliado")
 
 st.divider()
 
@@ -77,6 +77,14 @@ with st.sidebar:
     st.markdown("---")
     btn_extrair = st.button("🚀 INICIAR EXTRAÇÃO DA NUVEM", type="primary", use_container_width=True)
 
+    # Créditos Legais
+    st.markdown("---")
+    st.markdown("<div style='font-size: 0.8em; color: gray;'>", unsafe_allow_html=True)
+    st.markdown("<b>📚 Fontes e Licenças:</b>")
+    st.markdown("- <b>ERA5:</b> Dados gerados pelo programa europeu Copernicus Climate Change Service (C3S).")
+    st.markdown("- <b>GFS:</b> Dados fornecidos em domínio público pela NOAA / NCEP.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
 # ==========================================
 # CORPO PRINCIPAL (MAPA E DASHBOARD)
 # ==========================================
@@ -104,7 +112,8 @@ folium.Marker(
     icon=folium.Icon(color="red", icon="cloud", prefix='fa')
 ).add_to(mapa)
 
-mapa_resultado = st_folium(mapa, height=350, use_container_width=True, returned_objects=["last_clicked"])
+# 🔥 ALTERAÇÃO AQUI: Aumentado o "height" de 350 para 550 para melhorar a visualização!
+mapa_resultado = st_folium(mapa, height=550, use_container_width=True, returned_objects=["last_clicked"])
 
 if mapa_resultado.get("last_clicked"):
     click_lat = mapa_resultado["last_clicked"]["lat"]
