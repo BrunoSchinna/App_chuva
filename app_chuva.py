@@ -11,11 +11,12 @@ from streamlit_folium import st_folium
 # ==========================================
 st.set_page_config(page_title="SIG Climático Pro", page_icon="🌤️", layout="wide")
 
+# CSS customizado corrigido (agora a setinha da barra lateral aparece!)
 estilo_customizado = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    
     .stButton>button {
         border-radius: 8px;
         transition: all 0.3s ease;
@@ -88,7 +89,7 @@ with col_metrica2:
 # Criação do Mapa Base
 mapa = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=11, control_scale=True)
 
-# 🔥 A MÁGICA: Camada do Google Híbrido (Satélite + Divisas Municipais/Estaduais + Ruas)
+# Camada do Google Híbrido (Satélite + Divisas Municipais/Estaduais + Ruas)
 folium.TileLayer(
     tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
     attr='Google',
