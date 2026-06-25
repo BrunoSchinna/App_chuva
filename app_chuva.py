@@ -7,6 +7,7 @@ import folium
 from streamlit_folium import st_folium
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit.components.v1 as components
 
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA E CSS
@@ -17,14 +18,6 @@ estilo_customizado = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    .stButton>button {
-        border-radius: 8px;
-        transition: all 0.3s ease;
-    }
-    .stButton>button:hover {
-        transform: scale(1.02);
-    }
     div.block-container {
         padding-top: 2rem;
     }
@@ -38,28 +31,28 @@ st.markdown(estilo_customizado, unsafe_allow_html=True)
 col_titulo, col_logo = st.columns([4, 1])
 with col_titulo:
     st.title("🌤️ SIG Climático Pro")
-    st.markdown("**Sistema Inteligente de Extração Hidrometeorológica (ERA5 + GFS)**")
+    st.markdown("**Sistema Inteligente de Extração Hidrometeorológica (Automático)**")
 with col_logo:
-    st.caption("v3.0 - Dashboard Avançado")
+    st.caption("v4.0 - Auto-Scroll Mobile")
 
 st.divider()
 
 # ==========================================
-# MEMÓRIA DO APLICATIVO
+# MEMÓRIA DO APLICATIVO E STATUS DE SCROLL
 # ==========================================
 if "lat" not in st.session_state:
     st.session_state.lat = -25.4200
 if "lon" not in st.session_state:
     st.session_state.lon = -49.2700
-if "elevacao" not in st.session_state:
-    st.session_state.elevacao = "Aguardando..."
+if "rolar_tela" not in st.session_state:
+    st.session_state.rolar_tela = False
 
 # ==========================================
-# MENU LATERAL (CONTROLES)
+# MENU LATERAL (Apenas Filtros, sem botão!)
 # ==========================================
 with st.sidebar:
     st.header("⚙️ Painel de Controle")
-    st.markdown("Defina o ponto de estudo abaixo ou **clique diretamente no mapa**.")
+    st.markdown("Apenas **clique diretamente no mapa** e o sistema fará o resto.")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -70,231 +63,165 @@ with st.sidebar:
     if lat_input != st.session_state.lat or lon_input != st.session_state.lon:
         st.session_state.lat = lat_input
         st.session_state.lon = lon_input
-        st.session_state.elevacao = "Aguardando..." # Reseta a altitude ao mudar de local
+        st.session_state.rolar_tela = True
         st.rerun()
 
     st.markdown("---")
     st.subheader("📊 Seleção de Dados")
-    var_hist = st.checkbox("🌧️ Histórico Mensal (ERA5)", value=True, help="Puxa dados desde 1981 até a semana atual.")
-    var_prev = st.checkbox("🔮 Previsão Diária (GFS)", value=True, help="Puxa a previsão acumulada dos próximos 16 dias.")
+    var_hist = st.checkbox("🌧️ Histórico Mensal (ERA5)", value=True)
+    var_prev = st.checkbox("🔮 Previsão Diária (GFS)", value=True)
     
-    st.markdown("---")
-    btn_extrair = st.button("🚀 INICIAR EXTRAÇÃO DA NUVEM", type="primary", use_container_width=True)
-
-    # Créditos Legais
     st.markdown("---")
     st.markdown("<div style='font-size: 0.8em; color: gray;'>", unsafe_allow_html=True)
     st.markdown("<b>📚 Fontes e Licenças:</b>")
-    st.markdown("- <b>ERA5:</b> Dados gerados pelo Copernicus Climate Change Service (C3S).")
-    st.markdown("- <b>GFS:</b> Dados fornecidos em domínio público pela NOAA / NCEP.")
+    st.markdown("- <b>ERA5:</b> Copernicus Climate Change Service (C3S).")
+    st.markdown("- <b>GFS:</b> NOAA / NCEP.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
-# CORPO PRINCIPAL (MAPA E DASHBOARD)
+# MOTOR DE BUSCA COM CACHE (Super Rápido)
 # ==========================================
-col_metrica1, col_metrica2, col_metrica3, col_vazio = st.columns([1, 1, 1, 1])
-with col_metrica1:
-    st.metric(label="Latitude Ativa", value=f"{st.session_state.lat:.4f}")
-with col_metrica2:
-    st.metric(label="Longitude Ativa", value=f"{st.session_state.lon:.4f}")
-with col_metrica3:
-    st.metric(label="Altitude (Topografia)", value=f"{st.session_state.elevacao}")
+@st.cache_data(show_spinner=False, ttl=3600)
+def buscar_dados_api(lat, lon, quer_hist, quer_prev):
+    df_h = pd.DataFrame()
+    df_c = pd.DataFrame()
+    df_p = pd.DataFrame()
+    alt = "N/A"
+    
+    if quer_hist:
+        hoje = datetime.date.today()
+        fim = hoje - datetime.timedelta(days=5)
+        url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}&start_date=1981-01-01&end_date={fim}&daily=precipitation_sum&timezone=America%2FSao_Paulo"
+        r = requests.get(url)
+        if r.status_code == 200:
+            d = r.json()
+            alt = f"{d.get('elevation', 'N/A')} m"
+            df_bruto = pd.DataFrame({'Data': pd.to_datetime(d['daily']['time']), 'Chuva_Observada': d['daily']['precipitation_sum']}).set_index('Data')
+            df_h = df_bruto.resample('MS').sum().reset_index()
+            
+            df_temp = df_bruto.copy()
+            df_temp['Mes'] = df_temp.index.month
+            df_soma = df_temp.groupby([df_temp.index.year, 'Mes'])['Chuva_Observada'].sum().reset_index()
+            df_c = df_soma.groupby('Mes')['Chuva_Observada'].mean().reset_index()
+            meses_nome = {1:'Jan', 2:'Fev', 3:'Mar', 4:'Abr', 5:'Mai', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Set', 10:'Out', 11:'Nov', 12:'Dez'}
+            df_c['Mês'] = df_c['Mes'].map(meses_nome)
+            df_c.rename(columns={'Chuva_Observada': 'Media_Historica'}, inplace=True)
+            
+    if quer_prev:
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=America%2FSao_Paulo&forecast_days=16"
+        r = requests.get(url)
+        if r.status_code == 200:
+            d = r.json()
+            if alt == "N/A": alt = f"{d.get('elevation', 'N/A')} m"
+            df_p = pd.DataFrame({'Data': pd.to_datetime(d['daily']['time']), 'Chuva_Diaria': d['daily']['precipitation_sum']})
+            df_p['Chuva_Acumulada'] = df_p['Chuva_Diaria'].cumsum()
+            
+    return df_h, df_c, df_p, alt
 
-# Criação do Mapa Base
+# ==========================================
+# EXECUÇÃO AUTOMÁTICA DOS DADOS
+# ==========================================
+if var_hist or var_prev:
+    with st.spinner("📡 Calculando e processando os dados para este local..."):
+        df_historico, df_clima, df_previsao, elevacao = buscar_dados_api(st.session_state.lat, st.session_state.lon, var_hist, var_prev)
+else:
+    st.warning("Selecione pelo menos um dado para análise no painel.")
+    st.stop()
+
+# ==========================================
+# PAINEL DE MÉTRICAS SUPERIOR
+# ==========================================
+col_m1, col_m2, col_m3, col_vazio = st.columns([1, 1, 1, 1])
+col_m1.metric(label="Latitude Ativa", value=f"{st.session_state.lat:.4f}")
+col_m2.metric(label="Longitude Ativa", value=f"{st.session_state.lon:.4f}")
+col_m3.metric(label="Altitude Local", value=elevacao)
+
+# ==========================================
+# MAPA INTERATIVO (O GATILHO)
+# ==========================================
 mapa = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=11, control_scale=True)
-
 folium.TileLayer(
-    tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-    attr='Google',
-    name='Google Híbrido',
-    overlay=False,
-    control=True
+    tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Google Híbrido'
 ).add_to(mapa)
-
-folium.Marker(
-    [st.session_state.lat, st.session_state.lon],
-    popup="Ponto de Extração",
-    icon=folium.Icon(color="red", icon="cloud", prefix='fa')
-).add_to(mapa)
+folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color="red", icon="cloud", prefix='fa')).add_to(mapa)
 
 mapa_resultado = st_folium(mapa, height=450, use_container_width=True, returned_objects=["last_clicked"])
 
+# Se clicar no mapa, atualiza coordenada e pede para rolar a tela!
 if mapa_resultado.get("last_clicked"):
     click_lat = mapa_resultado["last_clicked"]["lat"]
     click_lon = mapa_resultado["last_clicked"]["lng"]
-    
     if click_lat != st.session_state.lat or click_lon != st.session_state.lon:
         st.session_state.lat = click_lat
         st.session_state.lon = click_lon
-        st.session_state.elevacao = "Aguardando..."
+        st.session_state.rolar_tela = True
         st.rerun()
 
 # ==========================================
-# LÓGICA DE EXTRAÇÃO E RESULTADOS
+# ANCORA DE ROLAGEM INVISÍVEL
 # ==========================================
-if btn_extrair:
-    if not var_hist and not var_prev:
-        st.warning("⚠️ Selecione pelo menos uma variável no menu lateral antes de prosseguir!")
-    else:
+# O código Javascript vai procurar este elemento na tela e puxar a visão do celular até ele
+st.markdown("<div id='area_resultados'></div>", unsafe_allow_html=True)
+
+# ==========================================
+# GRÁFICOS E RESULTADOS
+# ==========================================
+tab1, tab2 = st.tabs(["📈 Histórico e Climatologia", "🔮 Previsão (16 Dias)"])
+
+with tab1:
+    if not df_historico.empty:
+        st.markdown("#### Normal Climatológica (Média de 1981 a Hoje)")
+        fig_clima = px.bar(df_clima, x='Mês', y='Media_Historica', text_auto='.1f', template="plotly_white")
+        fig_clima.update_traces(marker_color='#34495e', textfont_size=12, textposition="outside", cliponaxis=False)
+        st.plotly_chart(fig_clima, use_container_width=True)
         st.divider()
-        with st.spinner("📡 Conectando aos supercomputadores globais... Aguarde."):
-            df_historico = pd.DataFrame()
-            df_clima = pd.DataFrame()
-            df_previsao = pd.DataFrame()
+        st.markdown("#### Série Histórica Mensal Completa")
+        fig_hist = px.line(df_historico, x='Data', y='Chuva_Observada', template="plotly_white")
+        fig_hist.update_traces(line_color='#3498db', line_width=2)
+        st.plotly_chart(fig_hist, use_container_width=True)
 
-            # 1. PUXA HISTÓRICO E CLIMATOLOGIA
-            if var_hist:
-                try:
-                    hoje = datetime.date.today()
-                    fim_historico = hoje - datetime.timedelta(days=5)
-                    inicio_historico = "1981-01-01"
+with tab2:
+    if not df_previsao.empty:
+        st.markdown("#### Hidrograma Meteorológico (Diário vs Acumulado)")
+        fig_prev = go.Figure()
+        fig_prev.add_trace(go.Bar(x=df_previsao['Data'], y=df_previsao['Chuva_Diaria'], name='Diária (mm)', marker_color='#2ecc71', text=df_previsao['Chuva_Diaria'].round(1), textposition='auto'))
+        fig_prev.add_trace(go.Scatter(x=df_previsao['Data'], y=df_previsao['Chuva_Acumulada'], name='Acumulada (mm)', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+        fig_prev.update_layout(template="plotly_white", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig_prev, use_container_width=True)
 
-                    url_hist = f"https://archive-api.open-meteo.com/v1/archive?latitude={st.session_state.lat}&longitude={st.session_state.lon}&start_date={inicio_historico}&end_date={fim_historico}&daily=precipitation_sum&timezone=America%2FSao_Paulo"
-                    resp_hist = requests.get(url_hist)
-                    
-                    if resp_hist.status_code == 200:
-                        dados_hist = resp_hist.json()
-                        
-                        # Atualiza a altitude na memória do sistema
-                        elevacao = dados_hist.get("elevation", "N/A")
-                        st.session_state.elevacao = f"{elevacao} m"
+if not df_historico.empty or not df_previsao.empty:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        if not df_historico.empty:
+            df_hist_save = df_historico.copy()
+            df_hist_save['Data'] = df_hist_save['Data'].dt.strftime('%Y-%m')
+            df_hist_save.to_excel(writer, sheet_name="Historico_ERA5", index=False)
+            df_clima.round(2).to_excel(writer, sheet_name="Normal_Climatologica", index=False)
+        if not df_previsao.empty:
+            df_prev_save = df_previsao.copy()
+            df_prev_save['Data'] = df_prev_save['Data'].dt.strftime('%Y-%m-%d')
+            df_prev_save.to_excel(writer, sheet_name="Previsao_GFS", index=False)
+    
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+    with col_btn2:
+        st.download_button("💾 BAIXAR DADOS EM EXCEL", data=buffer.getvalue(), file_name=f"Dados_Climaticos_{st.session_state.lat:.2f}_{st.session_state.lon:.2f}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
 
-                        df_bruto = pd.DataFrame({
-                            'Data': pd.to_datetime(dados_hist['daily']['time']),
-                            'Chuva_Observada': dados_hist['daily']['precipitation_sum']
-                        })
-                        df_bruto.set_index('Data', inplace=True)
-                        
-                        # Histórico Mensal Contínuo
-                        df_historico = df_bruto.resample('MS').sum().reset_index()
-                        
-                        # Cálculo da Normal Climatológica (Média por Mês)
-                        df_temp = df_bruto.copy()
-                        df_temp['Mes'] = df_temp.index.month
-                        # Agrupa por ano e mês, soma, depois tira a média de cada mês
-                        df_soma_mensal = df_temp.groupby([df_temp.index.year, 'Mes'])['Chuva_Observada'].sum().reset_index()
-                        df_clima = df_soma_mensal.groupby('Mes')['Chuva_Observada'].mean().reset_index()
-                        
-                        meses_nome = {1:'Jan', 2:'Fev', 3:'Mar', 4:'Abr', 5:'Mai', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Set', 10:'Out', 11:'Nov', 12:'Dez'}
-                        df_clima['Mês'] = df_clima['Mes'].map(meses_nome)
-                        df_clima.rename(columns={'Chuva_Observada': 'Media_Historica'}, inplace=True)
-                        
-                except Exception as e:
-                    st.error(f"❌ Erro ao baixar o histórico: {e}")
-
-            # 2. PUXA PREVISÃO E CALCULA ACUMULADO
-            if var_prev:
-                try:
-                    url_prev = f"https://api.open-meteo.com/v1/forecast?latitude={st.session_state.lat}&longitude={st.session_state.lon}&daily=precipitation_sum&timezone=America%2FSao_Paulo&forecast_days=16"
-                    resp_prev = requests.get(url_prev)
-                    
-                    if resp_prev.status_code == 200:
-                        dados_prev = resp_prev.json()
-                        
-                        if st.session_state.elevacao == "Aguardando...":
-                            elevacao = dados_prev.get("elevation", "N/A")
-                            st.session_state.elevacao = f"{elevacao} m"
-
-                        df_previsao = pd.DataFrame({
-                            'Data': pd.to_datetime(dados_prev['daily']['time']),
-                            'Chuva_Diaria': dados_prev['daily']['precipitation_sum']
-                        })
-                        # Cria a curva acumulada somando os dias
-                        df_previsao['Chuva_Acumulada'] = df_previsao['Chuva_Diaria'].cumsum()
-
-                except Exception as e:
-                    st.error(f"❌ Erro ao baixar a previsão: {e}")
-
-            # ==========================================
-            # APRESENTAÇÃO DOS GRÁFICOS COM PLOTLY
-            # ==========================================
-            st.success("✅ Download e Cálculos Hidrológicos concluídos!")
-            
-            # Força o Streamlit a recarregar a tela para atualizar a métrica de Altitude lá em cima
-            if "ja_atualizou_altitude" not in st.session_state:
-                st.session_state.ja_atualizou_altitude = True
-                st.rerun()
-            else:
-                del st.session_state["ja_atualizou_altitude"]
-
-            tab1, tab2 = st.tabs(["📈 Histórico e Climatologia", "🔮 Previsão (16 Dias)"])
-
-            with tab1:
-                if not df_historico.empty:
-                    st.markdown("#### Normal Climatológica (Média de 1981 a Hoje)")
-                    fig_clima = px.bar(df_clima, x='Mês', y='Media_Historica', text_auto='.1f', 
-                                       labels={'Media_Historica': 'Chuva Esperada (mm)'}, 
-                                       template="plotly_white")
-                    fig_clima.update_traces(marker_color='#34495e', textfont_size=12, textangle=0, textposition="outside", cliponaxis=False)
-                    st.plotly_chart(fig_clima, use_container_width=True)
-                    
-                    st.divider()
-
-                    st.markdown("#### Série Histórica Mensal Completa")
-                    fig_hist = px.line(df_historico, x='Data', y='Chuva_Observada', 
-                                       labels={'Chuva_Observada': 'Chuva Total (mm)', 'Data': 'Ano'},
-                                       template="plotly_white")
-                    fig_hist.update_traces(line_color='#3498db', line_width=2)
-                    st.plotly_chart(fig_hist, use_container_width=True)
-
-            with tab2:
-                if not df_previsao.empty:
-                    st.markdown("#### Hidrograma Meteorológico (Diário vs Acumulado)")
-                    
-                    # Gráfico Combinado: Barras (Diário) + Linha (Acumulado)
-                    fig_prev = go.Figure()
-                    
-                    # Barras de chuva diária
-                    fig_prev.add_trace(go.Bar(
-                        x=df_previsao['Data'], y=df_previsao['Chuva_Diaria'], 
-                        name='Chuva Diária (mm)', marker_color='#2ecc71',
-                        text=df_previsao['Chuva_Diaria'].round(1), textposition='auto'
-                    ))
-                    
-                    # Linha de chuva acumulada
-                    fig_prev.add_trace(go.Scatter(
-                        x=df_previsao['Data'], y=df_previsao['Chuva_Acumulada'], 
-                        name='Volume Acumulado (mm)', mode='lines+markers', 
-                        line=dict(color='#e74c3c', width=3),
-                        marker=dict(size=8)
-                    ))
-                    
-                    fig_prev.update_layout(
-                        template="plotly_white", 
-                        hovermode="x unified",
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                    )
-                    
-                    st.plotly_chart(fig_prev, use_container_width=True)
-
-            # ==========================================
-            # BOTÃO DE DOWNLOAD
-            # ==========================================
-            if not df_historico.empty or not df_previsao.empty:
-                st.markdown("<br>", unsafe_allow_html=True)
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    if not df_historico.empty:
-                        df_hist_save = df_historico.copy()
-                        df_hist_save['Data'] = df_hist_save['Data'].dt.strftime('%Y-%m')
-                        df_hist_save.to_excel(writer, sheet_name="Historico_ERA5", index=False)
-                        
-                        df_clima_save = df_clima[['Mês', 'Media_Historica']].copy()
-                        df_clima_save['Media_Historica'] = df_clima_save['Media_Historica'].round(2)
-                        df_clima_save.to_excel(writer, sheet_name="Normal_Climatologica", index=False)
-                        
-                    if not df_previsao.empty:
-                        df_prev_save = df_previsao.copy()
-                        df_prev_save['Data'] = df_prev_save['Data'].dt.strftime('%Y-%m-%d')
-                        df_prev_save.to_excel(writer, sheet_name="Previsao_GFS", index=False)
-                
-                col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
-                with col_btn2:
-                    st.download_button(
-                        label="💾 BAIXAR DADOS EM EXCEL",
-                        data=buffer.getvalue(),
-                        file_name=f"Dados_Climaticos_{st.session_state.lat:.2f}_{st.session_state.lon:.2f}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        type="primary",
-                        use_container_width=True
-                    )
+# ==========================================
+# GATILHO DA ROLAGEM MÁGICA
+# ==========================================
+if st.session_state.rolar_tela:
+    components.html(
+        """
+        <script>
+        setTimeout(function() {
+            var doc = window.parent.document;
+            var element = doc.getElementById('area_resultados');
+            if (element) {
+                element.scrollIntoView({behavior: 'smooth', block: 'start'});
+            }
+        }, 300);
+        </script>
+        """, height=0
+    )
+    # Desativa a flag para não rolar toda vez que mudar de aba
+    st.session_state.rolar_tela = False
