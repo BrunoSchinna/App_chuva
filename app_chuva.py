@@ -30,8 +30,8 @@ st.markdown(estilo_customizado, unsafe_allow_html=True)
 # ==========================================
 col_titulo, col_logo = st.columns([4, 1])
 with col_titulo:
-    st.title("🌤️ SIG Climático Pro")
-    st.markdown("**Sistema Inteligente de Extração Hidrometeorológica (Automático)**")
+    st.title("🌤️ Rain Forecast - Seu aplicativo de histórico e previsão de chuva")
+    st.markdown("**Sistema Extração Hidrometeorológica (Automático)**")
 with col_logo:
     st.caption("v4.0 - Auto-Scroll Mobile")
 
@@ -73,9 +73,9 @@ with st.sidebar:
     
     st.markdown("---")
     st.markdown("<div style='font-size: 0.8em; color: gray;'>", unsafe_allow_html=True)
-    st.markdown("<b>📚 Fontes e Licenças:</b>")
-    st.markdown("- <b>ERA5:</b> Copernicus Climate Change Service (C3S).")
-    st.markdown("- <b>GFS:</b> NOAA / NCEP.")
+    st.markdown("📚 Fontes e Licenças:")
+    st.markdown("-ERA5:Copernicus Climate Change Service (C3S).")
+    st.markdown("-GFS:NOAA / NCEP.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
@@ -145,7 +145,7 @@ folium.TileLayer(
 ).add_to(mapa)
 folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color="red", icon="cloud", prefix='fa')).add_to(mapa)
 
-mapa_resultado = st_folium(mapa, height=450, use_container_width=True, returned_objects=["last_clicked"])
+mapa_resultado = st_folium(mapa, height=800, use_container_width=True, returned_objects=["last_clicked"])
 
 # Se clicar no mapa, atualiza coordenada e pede para rolar a tela!
 if mapa_resultado.get("last_clicked"):
