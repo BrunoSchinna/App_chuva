@@ -205,7 +205,7 @@ st.markdown(
         <a href='https://open-meteo.com/' target='_blank' style='color: #7f8c8d; text-decoration: none;'><b>Open-Meteo API</b></a> (Licença CC BY 4.0).<br>
         • <b>Dados Históricos:</b> Contém informações modificadas do programa europeu <i>Copernicus Climate Change Service</i> (Reanálise ERA5).<br>
         • <b>Dados de Previsão:</b> Provenientes do modelo global GFS, mantido pela <i>NOAA / NCEP</i> (Estados Unidos).<br><br>
-        <i>⚠️ Aviso Legal: O uso destes dados é indicado para consultas, estudos preliminares e análises acadêmicas.</i>
+        <i>⚠️ Aviso Legal: O uso destes dados é indicado para consultas e estudos preliminares.</i>
     </div>
     """, 
     unsafe_allow_html=True
