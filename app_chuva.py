@@ -13,10 +13,10 @@ from geopy.geocoders import Nominatim
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA E CSS
 # ==========================================
-st.set_page_config(page_title="SIG Climático V5.0", page_icon="🌍", layout="wide")
+st.set_page_config(page_title="Dados históricos e previsão climática", page_icon="🌍", layout="wide")
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;} div.block-container {padding-top: 2rem;}</style>", unsafe_allow_html=True)
 
-st.title("🌍 SIG Climático Pro - V5.0")
+st.title("🌍 Análise histórica e previsão climática - ERA5 + GFS")
 st.markdown("**Sistema de Extração Hidrometeorológica (ERA5 + GFS)**")
 st.divider()
 
@@ -151,7 +151,7 @@ folium.Marker(
     popup=f"Lat: {st.session_state.lat:.2f} | Lon: {st.session_state.lon:.2f}"
 ).add_to(mapa)
 
-mapa_clicado = st_folium(mapa, height=450, use_container_width=True, returned_objects=["last_clicked"])
+mapa_clicado = st_folium(mapa, height=800, use_container_width=True, returned_objects=["last_clicked"])
 if mapa_clicado.get("last_clicked"):
     if mapa_clicado["last_clicked"]["lat"] != st.session_state.lat:
         st.session_state.lat = mapa_clicado["last_clicked"]["lat"]
@@ -256,7 +256,7 @@ st.markdown(
         • <b>Dados Históricos:</b> Contém informações modificadas do programa europeu <i>Copernicus Climate Change Service</i> (Reanálise ERA5).<br>
         • <b>Dados de Previsão:</b> Provenientes do modelo global GFS, mantido pela <i>NOAA / NCEP</i> (Estados Unidos).<br>
         • <b>Geocoding:</b> Desenvolvido usando dados do projeto <i>OpenStreetMap</i>.<br><br>
-        <i>⚠️ Aviso Legal: O uso destes dados é indicado para consultas, estudos preliminares e análises acadêmicas.</i>
+        <i>⚠️ Aviso Legal: O uso destes dados é indicado somente para consultas e estudos preliminares.</i>
     </div>
     """, 
     unsafe_allow_html=True
