@@ -12,10 +12,10 @@ import streamlit.components.v1 as components
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA
 # ==========================================
-st.set_page_config(page_title="SIG Climático Pro", page_icon="🌍", layout="wide")
+st.set_page_config(page_title="Análise histórica e previsão de chuva", page_icon="🌍", layout="wide")
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;} div.block-container {padding-top: 2rem;}</style>", unsafe_allow_html=True)
 
-st.title("🌍 SIG Climático - Análise de dados climáticos em tempo real")
+st.title("🌍 Análise de dados climáticos em tempo real")
 st.markdown("**Sistema de Extração Hidrometeorológica (ERA5 + GFS)**")
 st.divider()
 
