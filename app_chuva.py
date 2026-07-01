@@ -15,8 +15,8 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="SIG Climático Pro", page_icon="🌍", layout="wide")
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;} div.block-container {padding-top: 2rem;}</style>", unsafe_allow_html=True)
 
-st.title("🌍 SIG Climático Pro - 100% API Integrada")
-st.markdown("**Sistema Extração Hidrometeorológica (ERA5 + GFS)**")
+st.title("🌍 SIG Climático - Análise de dados climáticos em tempo real")
+st.markdown("**Sistema de Extração Hidrometeorológica (ERA5 + GFS)**")
 st.divider()
 
 # ==========================================
@@ -54,7 +54,7 @@ with st.sidebar:
 def extrair_dados(lat, lon, hist, prev):
     df_hist = pd.DataFrame()
     df_prev = pd.DataFrame()
-    altitude = "N/A" # Variável para guardar a altitude
+    altitude = "N/A"
     
     if hist:
         hoje = datetime.date.today()
@@ -63,7 +63,7 @@ def extrair_dados(lat, lon, hist, prev):
         r = requests.get(url)
         if r.status_code == 200:
             d = r.json()
-            altitude = d.get('elevation', 'N/A') # Pega a altitude do json
+            altitude = d.get('elevation', 'N/A')
             df_bruto = pd.DataFrame({
                 'Data': pd.to_datetime(d['daily']['time']),
                 'Chuva': d['daily']['precipitation_sum'],
@@ -97,7 +97,6 @@ else:
 # ==========================================
 # MAPA E PLACAR
 # ==========================================
-# Agora com 3 colunas para incluir a altitude!
 col_m1, col_m2, col_m3 = st.columns(3)
 col_m1.metric("📍 Latitude", f"{st.session_state.lat:.4f}")
 col_m2.metric("📍 Longitude", f"{st.session_state.lon:.4f}")
@@ -107,7 +106,7 @@ mapa = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_st
 folium.TileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Google Híbrido').add_to(mapa)
 folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color="red")).add_to(mapa)
 
-mapa_clicado = st_folium(mapa, height=400, use_container_width=True, returned_objects=["last_clicked"])
+mapa_clicado = st_folium(mapa, height=800, use_container_width=True, returned_objects=["last_clicked"])
 if mapa_clicado.get("last_clicked"):
     if mapa_clicado["last_clicked"]["lat"] != st.session_state.lat:
         st.session_state.lat = mapa_clicado["last_clicked"]["lat"]
@@ -183,8 +182,31 @@ if not df_historico.empty or not df_previsao.empty:
             df_previsao.to_excel(writer, sheet_name="Previsao_e_Passado", index=False)
             
     st.divider()
-    st.download_button("💾 BAIXAR DADOS EM EXCEL", data=buffer.getvalue(), file_name="SIG_Climatico_Export.xlsx", type="primary")
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+    with col_btn2:
+        st.download_button("💾 BAIXAR DADOS EM EXCEL", data=buffer.getvalue(), file_name="SIG_Climatico_Export.xlsx", type="primary", use_container_width=True)
 
+# ==========================================
+# GATILHO DA ROLAGEM MÁGICA
+# ==========================================
 if st.session_state.rolar_tela:
     components.html("<script>setTimeout(function(){window.parent.document.getElementById('area_resultados').scrollIntoView({behavior:'smooth'});}, 300);</script>", height=0)
     st.session_state.rolar_tela = False
+
+# ==========================================
+# RODAPÉ COM REFERÊNCIAS E LICENÇAS
+# ==========================================
+st.divider()
+st.markdown(
+    """
+    <div style='text-align: center; font-size: 0.85em; color: #7f8c8d;'>
+        <b>📚 Referências de Dados e Licenças Tecnológicas:</b><br><br>
+        Os dados hidrometeorológicos deste aplicativo são agregados e fornecidos via 
+        <a href='https://open-meteo.com/' target='_blank' style='color: #7f8c8d; text-decoration: none;'><b>Open-Meteo API</b></a> (Licença CC BY 4.0).<br>
+        • <b>Dados Históricos:</b> Contém informações modificadas do programa europeu <i>Copernicus Climate Change Service</i> (Reanálise ERA5).<br>
+        • <b>Dados de Previsão:</b> Provenientes do modelo global GFS, mantido pela <i>NOAA / NCEP</i> (Estados Unidos).<br><br>
+        <i>⚠️ Aviso Legal: O uso destes dados é indicado para consultas, estudos preliminares e análises acadêmicas.</i>
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
