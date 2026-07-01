@@ -54,6 +54,7 @@ with st.sidebar:
 def extrair_dados(lat, lon, hist, prev):
     df_hist = pd.DataFrame()
     df_prev = pd.DataFrame()
+    altitude = "N/A" # Variável para guardar a altitude
     
     if hist:
         hoje = datetime.date.today()
@@ -62,12 +63,12 @@ def extrair_dados(lat, lon, hist, prev):
         r = requests.get(url)
         if r.status_code == 200:
             d = r.json()
+            altitude = d.get('elevation', 'N/A') # Pega a altitude do json
             df_bruto = pd.DataFrame({
                 'Data': pd.to_datetime(d['daily']['time']),
                 'Chuva': d['daily']['precipitation_sum'],
                 'Temp': d['daily']['temperature_2m_mean']
             }).set_index('Data')
-            # Soma chuva (evitando zeros falsos) e faz média da temperatura
             df_hist = df_bruto.resample('MS').agg({'Chuva': lambda x: x.sum(min_count=1), 'Temp': 'mean'}).reset_index()
 
     if prev:
@@ -75,6 +76,8 @@ def extrair_dados(lat, lon, hist, prev):
         r = requests.get(url)
         if r.status_code == 200:
             d = r.json()
+            if altitude == "N/A": 
+                altitude = d.get('elevation', 'N/A')
             df_prev = pd.DataFrame({
                 'Data': pd.to_datetime(d['daily']['time']),
                 'Chuva': d['daily']['precipitation_sum'],
@@ -82,11 +85,11 @@ def extrair_dados(lat, lon, hist, prev):
                 'Temp_Min': d['daily']['temperature_2m_min']
             })
             
-    return df_hist, df_prev
+    return df_hist, df_prev, altitude
 
 if var_hist or var_prev:
     with st.spinner("Conectando aos servidores ERA5 e GFS..."):
-        df_historico, df_previsao = extrair_dados(st.session_state.lat, st.session_state.lon, var_hist, var_prev)
+        df_historico, df_previsao, altitude_local = extrair_dados(st.session_state.lat, st.session_state.lon, var_hist, var_prev)
 else:
     st.warning("Selecione os dados no painel lateral.")
     st.stop()
@@ -94,9 +97,11 @@ else:
 # ==========================================
 # MAPA E PLACAR
 # ==========================================
-col_m1, col_m2 = st.columns(2)
-col_m1.metric("📍 Latitude Selecionada", f"{st.session_state.lat:.4f}")
-col_m2.metric("📍 Longitude Selecionada", f"{st.session_state.lon:.4f}")
+# Agora com 3 colunas para incluir a altitude!
+col_m1, col_m2, col_m3 = st.columns(3)
+col_m1.metric("📍 Latitude", f"{st.session_state.lat:.4f}")
+col_m2.metric("📍 Longitude", f"{st.session_state.lon:.4f}")
+col_m3.metric("⛰️ Altitude do Terreno", f"{altitude_local} m" if altitude_local != "N/A" else "N/A")
 
 mapa = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=11)
 folium.TileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Google Híbrido').add_to(mapa)
