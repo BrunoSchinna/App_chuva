@@ -1,7 +1,8 @@
 streamlit
 pandas
 requests
+openpyxl
 folium
 streamlit-folium
-openpyxl
 plotly
+geopy
