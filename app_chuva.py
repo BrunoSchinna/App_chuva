@@ -8,59 +8,31 @@ from streamlit_folium import st_folium
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
-from geopy.geocoders import Nominatim
 
 # ==========================================
-# CONFIGURAÇÃO DA PÁGINA E CSS
+# CONFIGURAÇÃO DA PÁGINA
 # ==========================================
-st.set_page_config(page_title="Dados históricos e previsão climática", page_icon="🌍", layout="wide")
+st.set_page_config(page_title="Dados Históricas e previsão climática", page_icon="🌍", layout="wide")
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;} div.block-container {padding-top: 2rem;}</style>", unsafe_allow_html=True)
 
-st.title("🌍 Análise histórica e previsão climática - ERA5 + GFS")
-st.markdown("**Sistema de Extração Hidrometeorológica (ERA5 + GFS)**")
+st.title("🌍 Sistema de informações climáticas")
+st.markdown("**Sistema Extração Hidrometeorológica (Chuva, Temp e Vento)**")
 st.divider()
 
 # ==========================================
-# MEMÓRIA DO APP E GEOCODING
+# MEMÓRIA DO APP
 # ==========================================
 if "lat" not in st.session_state: st.session_state.lat = -25.4200
 if "lon" not in st.session_state: st.session_state.lon = -49.2700
 if "rolar_tela" not in st.session_state: st.session_state.rolar_tela = False
 
-def buscar_cidade(nome_cidade):
-    try:
-        # User_agent personalizado é obrigatório no Nominatim (OSM)
-        geolocator = Nominatim(user_agent="sig_climatico_app_v1")
-        location = geolocator.geocode(nome_cidade)
-        if location:
-            return location.latitude, location.longitude, location.address
-        return None, None, None
-    except:
-        return None, None, None
-
 # ==========================================
-# MENU LATERAL (PESQUISA INTELIGENTE)
+# MENU LATERAL (BULLETPROOF)
 # ==========================================
 with st.sidebar:
-    st.header("⚙️ Localização e Filtros")
+    st.header("⚙️ Painel de Controle")
+    st.markdown("Apenas **clique diretamente no mapa** ou digite abaixo:")
     
-    # Nova Barra de Pesquisa de Texto
-    st.markdown("**Pesquisar por Cidade/Local:**")
-    texto_busca = st.text_input("Ex: Xanxerê, SC", placeholder="Digite e aperte Enter...")
-    
-    if texto_busca:
-        with st.spinner("Buscando coordenadas..."):
-            lat_b, lon_b, endereco = buscar_cidade(texto_busca)
-            if lat_b and lon_b:
-                st.success(f"Encontrado: {endereco.split(',')[0]}")
-                st.session_state.lat = lat_b
-                st.session_state.lon = lon_b
-                st.session_state.rolar_tela = True
-            else:
-                st.error("Local não encontrado. Tente ser mais específico.")
-    
-    st.markdown("---")
-    st.markdown("**Ou ajuste manualmente:**")
     col1, col2 = st.columns(2)
     lat_input = col1.number_input("Lat", value=st.session_state.lat, format="%.4f")
     lon_input = col2.number_input("Lon", value=st.session_state.lon, format="%.4f")
@@ -73,7 +45,7 @@ with st.sidebar:
 
     st.markdown("---")
     var_hist = st.checkbox("🌧️ Histórico (ERA5)", value=True)
-    var_prev = st.checkbox("🔮 Previsão & 7 Dias (GFS)", value=True)
+    var_prev = st.checkbox("🔮 Previsão & Voo (GFS)", value=True)
 
 # ==========================================
 # MOTOR DE BUSCA (API)
@@ -100,7 +72,8 @@ def extrair_dados(lat, lon, hist, prev):
             df_hist = df_bruto.resample('MS').agg({'Chuva': lambda x: x.sum(min_count=1), 'Temp': 'mean'}).reset_index()
 
     if prev:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=America%2FSao_Paulo&past_days=7&forecast_days=16"
+        # AGORA PUXAMOS O VENTO TAMBÉM (wind_speed_10m_max e wind_gusts_10m_max)
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max&timezone=America%2FSao_Paulo&past_days=7&forecast_days=16"
         r = requests.get(url)
         if r.status_code == 200:
             d = r.json()
@@ -110,29 +83,35 @@ def extrair_dados(lat, lon, hist, prev):
                 'Data': pd.to_datetime(d['daily']['time']),
                 'Chuva': d['daily']['precipitation_sum'],
                 'Temp_Max': d['daily']['temperature_2m_max'],
-                'Temp_Min': d['daily']['temperature_2m_min']
+                'Temp_Min': d['daily']['temperature_2m_min'],
+                'Vento_Max_kmh': d['daily']['wind_speed_10m_max'],
+                'Rajadas_kmh': d['daily']['wind_gusts_10m_max']
             })
             
     return df_hist, df_prev, altitude
 
 if var_hist or var_prev:
-    with st.spinner("Conectando aos servidores espaciais (ERA5 e GFS)..."):
+    with st.spinner("Conectando aos servidores ERA5 e GFS..."):
         df_historico, df_previsao, altitude_local = extrair_dados(st.session_state.lat, st.session_state.lon, var_hist, var_prev)
 else:
     st.warning("Selecione os dados no painel lateral.")
     st.stop()
 
 # ==========================================
-# PAINEL DE ALERTAS INTELIGENTES
+# PAINEL DE ALERTAS INTELIGENTES (CHUVA E VOO)
 # ==========================================
 hoje_ts = pd.Timestamp.today().normalize()
 if not df_previsao.empty:
-    # Calcula soma dos próximos 5 dias para alerta
     df_proximos = df_previsao[(df_previsao['Data'] >= hoje_ts) & (df_previsao['Data'] <= (hoje_ts + pd.Timedelta(days=5)))]
     chuva_curto_prazo = df_proximos['Chuva'].sum()
+    rajada_max = df_proximos['Rajadas_kmh'].max()
     
     if chuva_curto_prazo > 60:
-        st.error(f"🚨 **ALERTA METEOROLÓGICO:** Previsão de alto volume de chuva ({chuva_curto_prazo:.1f} mm) para os próximos 5 dias neste local!")
+        st.error(f"🚨 **ALERTA CHUVA:** Previsão de alto volume ({chuva_curto_prazo:.1f} mm) para os próximos 5 dias neste local!")
+    
+    # Alerta especial para Drones se o vento passar de 40 km/h
+    if rajada_max > 40:
+        st.warning(f"🚁 **ALERTA DE VOO (DRONES):** Rajadas de vento perigosas previstas ({rajada_max:.1f} km/h) nos próximos dias. Risco alto de perda de sinal ou queda!")
 
 # ==========================================
 # MAPA E PLACAR
@@ -142,14 +121,10 @@ col_m1.metric("📍 Latitude", f"{st.session_state.lat:.4f}")
 col_m2.metric("📍 Longitude", f"{st.session_state.lon:.4f}")
 col_m3.metric("⛰️ Altitude do Terreno", f"{altitude_local} m" if altitude_local != "N/A" else "N/A")
 
-# O mapa agora exibe um Popup clicável
-mapa = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=10)
+# Mapa limpo e garantido que funciona o clique
+mapa = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=11)
 folium.TileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Google Híbrido').add_to(mapa)
-folium.Marker(
-    [st.session_state.lat, st.session_state.lon], 
-    icon=folium.Icon(color="red", icon="info-sign"),
-    popup=f"Lat: {st.session_state.lat:.2f} | Lon: {st.session_state.lon:.2f}"
-).add_to(mapa)
+folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color="red")).add_to(mapa)
 
 mapa_clicado = st_folium(mapa, height=800, use_container_width=True, returned_objects=["last_clicked"])
 if mapa_clicado.get("last_clicked"):
@@ -164,9 +139,7 @@ st.markdown("<div id='area_resultados'></div>", unsafe_allow_html=True)
 # ==========================================
 # SEÇÃO DE ABAS
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["📈 Histórico ERA5 (1981-Atual)", "⏪ Passado Recente (Últimos 7 dias)", "🔮 Previsão (Próximos 15 dias)"])
-
-# Layout Transparente para Dark/Light mode
+tab1, tab2, tab3 = st.tabs(["📈 Histórico ERA5 (1981-Atual)", "⏪ Passado Recente (Últimos 7 dias)", "🔮 Previsão & Condições de Voo"])
 layout_transparente = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
 
 # ABA 1: HISTÓRICO
@@ -205,8 +178,16 @@ with tab2:
             fig4.add_trace(go.Scatter(x=df_7dias['Data'], y=df_7dias['Temp_Min'], name='Mín', line=dict(color='#3498db')))
             fig4.update_layout(**layout_transparente, yaxis=dict(gridcolor='rgba(128,128,128,0.2)'), legend=dict(orientation="h", y=1.1))
             st.plotly_chart(fig4, use_container_width=True)
+            
+        st.divider()
+        st.markdown("#### Velocidade do Vento e Rajadas (km/h) 🚁")
+        fig_vento_7d = go.Figure()
+        fig_vento_7d.add_trace(go.Scatter(x=df_7dias['Data'], y=df_7dias['Rajadas_kmh'], name='Rajadas (Pico)', line=dict(color='#e67e22', width=2, dash='dot')))
+        fig_vento_7d.add_trace(go.Bar(x=df_7dias['Data'], y=df_7dias['Vento_Max_kmh'], name='Vento Constante', marker_color='#f1c40f', opacity=0.6))
+        fig_vento_7d.update_layout(**layout_transparente, yaxis=dict(gridcolor='rgba(128,128,128,0.2)'), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig_vento_7d, use_container_width=True)
 
-# ABA 3: PREVISÃO
+# ABA 3: PREVISÃO E VOO
 with tab3:
     if not df_previsao.empty:
         df_futuro = df_previsao[df_previsao['Data'] >= hoje_ts].copy()
@@ -216,15 +197,27 @@ with tab3:
         fig5.update_layout(**layout_transparente, yaxis=dict(gridcolor='rgba(128,128,128,0.2)'))
         st.plotly_chart(fig5, use_container_width=True)
         
-        st.markdown("#### Previsão de Temperatura")
-        fig6 = go.Figure()
-        fig6.add_trace(go.Scatter(x=df_futuro['Data'], y=df_futuro['Temp_Max'], name='Máx', line=dict(color='#e74c3c', width=3)))
-        fig6.add_trace(go.Scatter(x=df_futuro['Data'], y=df_futuro['Temp_Min'], name='Mín', line=dict(color='#3498db', width=3)))
-        fig6.update_layout(**layout_transparente, yaxis=dict(gridcolor='rgba(128,128,128,0.2)'), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig6, use_container_width=True)
+        st.divider()
+        
+        col_prev1, col_prev2 = st.columns(2)
+        with col_prev1:
+            st.markdown("#### Previsão de Temperatura")
+            fig6 = go.Figure()
+            fig6.add_trace(go.Scatter(x=df_futuro['Data'], y=df_futuro['Temp_Max'], name='Máx', line=dict(color='#e74c3c', width=3)))
+            fig6.add_trace(go.Scatter(x=df_futuro['Data'], y=df_futuro['Temp_Min'], name='Mín', line=dict(color='#3498db', width=3)))
+            fig6.update_layout(**layout_transparente, yaxis=dict(gridcolor='rgba(128,128,128,0.2)'), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig6, use_container_width=True)
+            
+        with col_prev2:
+            st.markdown("#### Previsão de Ventos para Drones 🚁")
+            fig_vento_prev = go.Figure()
+            fig_vento_prev.add_trace(go.Scatter(x=df_futuro['Data'], y=df_futuro['Rajadas_kmh'], name='Rajadas Perigosas', mode='lines+markers', line=dict(color='#e67e22', width=2, dash='dot')))
+            fig_vento_prev.add_trace(go.Bar(x=df_futuro['Data'], y=df_futuro['Vento_Max_kmh'], name='Vento Constante', marker_color='#f1c40f', opacity=0.6))
+            fig_vento_prev.update_layout(**layout_transparente, yaxis=dict(gridcolor='rgba(128,128,128,0.2)'), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig_vento_prev, use_container_width=True)
 
 # ==========================================
-# EXPORTAÇÃO EXCEL
+# EXPORTAÇÃO EXCEL E RODAPÉ
 # ==========================================
 if not df_historico.empty or not df_previsao.empty:
     buffer = io.BytesIO()
@@ -243,9 +236,6 @@ if st.session_state.rolar_tela:
     components.html("<script>setTimeout(function(){window.parent.document.getElementById('area_resultados').scrollIntoView({behavior:'smooth'});}, 300);</script>", height=0)
     st.session_state.rolar_tela = False
 
-# ==========================================
-# RODAPÉ COM REFERÊNCIAS E LICENÇAS
-# ==========================================
 st.divider()
 st.markdown(
     """
@@ -254,9 +244,8 @@ st.markdown(
         Os dados hidrometeorológicos deste aplicativo são agregados e fornecidos via 
         <a href='https://open-meteo.com/' target='_blank' style='color: #7f8c8d; text-decoration: none;'><b>Open-Meteo API</b></a> (Licença CC BY 4.0).<br>
         • <b>Dados Históricos:</b> Contém informações modificadas do programa europeu <i>Copernicus Climate Change Service</i> (Reanálise ERA5).<br>
-        • <b>Dados de Previsão:</b> Provenientes do modelo global GFS, mantido pela <i>NOAA / NCEP</i> (Estados Unidos).<br>
-        • <b>Geocoding:</b> Desenvolvido usando dados do projeto <i>OpenStreetMap</i>.<br><br>
-        <i>⚠️ Aviso Legal: O uso destes dados é indicado somente para consultas e estudos preliminares.</i>
+        • <b>Dados de Previsão:</b> Provenientes do modelo global GFS, mantido pela <i>NOAA / NCEP</i> (Estados Unidos).<br><br>
+        <i>⚠️ Aviso Legal: O uso destes dados é indicado para consultas, estudos preliminares.</i>
     </div>
     """, 
     unsafe_allow_html=True
