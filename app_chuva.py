@@ -30,10 +30,10 @@ st.markdown(estilo_customizado, unsafe_allow_html=True)
 # ==========================================
 col_titulo, col_logo = st.columns([4, 1])
 with col_titulo:
-    st.title("🌤️ Rain Forecast - Seu aplicativo de histórico e previsão de chuva")
+    st.title("🌤️ Rain Forecast - Seu aplicativo de histórico e previsão")
     st.markdown("**Sistema Extração Hidrometeorológica (Automático)**")
 with col_logo:
-    st.caption("v4.0 - Auto-Scroll Mobile")
+    st.caption("v4.1 - Auto-Scroll & Temp Forecast")
 
 st.divider()
 
@@ -69,13 +69,13 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📊 Seleção de Dados")
     var_hist = st.checkbox("🌧️ Histórico Mensal (ERA5)", value=True)
-    var_prev = st.checkbox("🔮 Previsão Diária (GFS)", value=True)
+    var_prev = st.checkbox("🔮 Previsão Diária (GFS + Temp)", value=True)
     
     st.markdown("---")
     st.markdown("<div style='font-size: 0.8em; color: gray;'>", unsafe_allow_html=True)
     st.markdown("📚 Fontes e Licenças:")
-    st.markdown("-ERA5:Copernicus Climate Change Service (C3S).")
-    st.markdown("-GFS:NOAA / NCEP.")
+    st.markdown("-ERA5: Copernicus Climate Change Service (C3S).")
+    st.markdown("-GFS: NOAA / NCEP.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
@@ -87,6 +87,7 @@ def buscar_dados_api(lat, lon, quer_hist, quer_prev):
     df_c = pd.DataFrame()
     df_p = pd.DataFrame()
     alt = "N/A"
+    chuva_7_dias = 0.0
     
     if quer_hist:
         hoje = datetime.date.today()
@@ -108,22 +109,33 @@ def buscar_dados_api(lat, lon, quer_hist, quer_prev):
             df_c.rename(columns={'Chuva_Observada': 'Media_Historica'}, inplace=True)
             
     if quer_prev:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&timezone=America%2FSao_Paulo&forecast_days=16"
+        # Adicionado past_days=7 e dados de temperatura máxima e mínima
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=America%2FSao_Paulo&past_days=7&forecast_days=16"
         r = requests.get(url)
         if r.status_code == 200:
             d = r.json()
             if alt == "N/A": alt = f"{d.get('elevation', 'N/A')} m"
-            df_p = pd.DataFrame({'Data': pd.to_datetime(d['daily']['time']), 'Chuva_Diaria': d['daily']['precipitation_sum']})
+            df_p = pd.DataFrame({
+                'Data': pd.to_datetime(d['daily']['time']), 
+                'Chuva_Diaria': d['daily']['precipitation_sum'],
+                'Temp_Max': d['daily']['temperature_2m_max'],
+                'Temp_Min': d['daily']['temperature_2m_min']
+            })
             df_p['Chuva_Acumulada'] = df_p['Chuva_Diaria'].cumsum()
             
-    return df_h, df_c, df_p, alt
+            # Cálculo do acumulado dos últimos 7 dias (excluindo hoje)
+            hoje_ts = pd.Timestamp.today().normalize()
+            mask_7d = (df_p['Data'] >= (hoje_ts - pd.Timedelta(days=7))) & (df_p['Data'] < hoje_ts)
+            chuva_7_dias = df_p.loc[mask_7d, 'Chuva_Diaria'].sum()
+            
+    return df_h, df_c, df_p, alt, chuva_7_dias
 
 # ==========================================
 # EXECUÇÃO AUTOMÁTICA DOS DADOS
 # ==========================================
 if var_hist or var_prev:
     with st.spinner("📡 Calculando e processando os dados para este local..."):
-        df_historico, df_clima, df_previsao, elevacao = buscar_dados_api(st.session_state.lat, st.session_state.lon, var_hist, var_prev)
+        df_historico, df_clima, df_previsao, elevacao, chuva_7_dias = buscar_dados_api(st.session_state.lat, st.session_state.lon, var_hist, var_prev)
 else:
     st.warning("Selecione pelo menos um dado para análise no painel.")
     st.stop()
@@ -131,10 +143,11 @@ else:
 # ==========================================
 # PAINEL DE MÉTRICAS SUPERIOR
 # ==========================================
-col_m1, col_m2, col_m3, col_vazio = st.columns([1, 1, 1, 1])
+col_m1, col_m2, col_m3, col_m4 = st.columns([1, 1, 1, 1])
 col_m1.metric(label="Latitude Ativa", value=f"{st.session_state.lat:.4f}")
 col_m2.metric(label="Longitude Ativa", value=f"{st.session_state.lon:.4f}")
 col_m3.metric(label="Altitude Local", value=elevacao)
+col_m4.metric(label="Chuva (Últimos 7 dias)", value=f"{chuva_7_dias:.1f} mm")
 
 # ==========================================
 # MAPA INTERATIVO (O GATILHO)
@@ -160,13 +173,12 @@ if mapa_resultado.get("last_clicked"):
 # ==========================================
 # ANCORA DE ROLAGEM INVISÍVEL
 # ==========================================
-# O código Javascript vai procurar este elemento na tela e puxar a visão do celular até ele
 st.markdown("<div id='area_resultados'></div>", unsafe_allow_html=True)
 
 # ==========================================
 # GRÁFICOS E RESULTADOS
 # ==========================================
-tab1, tab2 = st.tabs(["📈 Histórico e Climatologia", "🔮 Previsão (16 Dias)"])
+tab1, tab2 = st.tabs(["📈 Histórico e Climatologia", "🔮 Previsão de Chuva e Temp"])
 
 with tab1:
     if not df_historico.empty:
@@ -182,12 +194,23 @@ with tab1:
 
 with tab2:
     if not df_previsao.empty:
+        # Gráfico de Precipitação
         st.markdown("#### Hidrograma Meteorológico (Diário vs Acumulado)")
         fig_prev = go.Figure()
         fig_prev.add_trace(go.Bar(x=df_previsao['Data'], y=df_previsao['Chuva_Diaria'], name='Diária (mm)', marker_color='#2ecc71', text=df_previsao['Chuva_Diaria'].round(1), textposition='auto'))
         fig_prev.add_trace(go.Scatter(x=df_previsao['Data'], y=df_previsao['Chuva_Acumulada'], name='Acumulada (mm)', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
         fig_prev.update_layout(template="plotly_white", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig_prev, use_container_width=True)
+        
+        st.divider()
+        
+        # Gráfico de Temperatura (Novo)
+        st.markdown("#### Previsão de Temperatura (Máxima e Mínima)")
+        fig_temp = go.Figure()
+        fig_temp.add_trace(go.Scatter(x=df_previsao['Data'], y=df_previsao['Temp_Max'], name='Máxima (°C)', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+        fig_temp.add_trace(go.Scatter(x=df_previsao['Data'], y=df_previsao['Temp_Min'], name='Mínima (°C)', mode='lines+markers', line=dict(color='#3498db', width=3)))
+        fig_temp.update_layout(template="plotly_white", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig_temp, use_container_width=True)
 
 if not df_historico.empty or not df_previsao.empty:
     buffer = io.BytesIO()
@@ -200,7 +223,8 @@ if not df_historico.empty or not df_previsao.empty:
         if not df_previsao.empty:
             df_prev_save = df_previsao.copy()
             df_prev_save['Data'] = df_prev_save['Data'].dt.strftime('%Y-%m-%d')
-            df_prev_save.to_excel(writer, sheet_name="Previsao_GFS", index=False)
+            # A exportação agora inclui automaticamente as colunas Temp_Max e Temp_Min criadas
+            df_prev_save.to_excel(writer, sheet_name="Previsao_GFS_e_Temp", index=False)
     
     col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
     with col_btn2:
@@ -223,5 +247,4 @@ if st.session_state.rolar_tela:
         </script>
         """, height=0
     )
-    # Desativa a flag para não rolar toda vez que mudar de aba
     st.session_state.rolar_tela = False
