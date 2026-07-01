@@ -139,7 +139,7 @@ st.markdown("<div id='area_resultados'></div>", unsafe_allow_html=True)
 # ==========================================
 # SEÇÃO DE ABAS
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["📈 Histórico ERA5 (1981-Atual)", "⏪ Passado Recente (Últimos 7 dias)", "🔮 Previsão & Condições de Voo"])
+tab1, tab2, tab3 = st.tabs(["📈 Histórico ERA5 (1981-Atual)", "⏪ Passado Recente (Últimos 7 dias)", "🔮 Previsão"])
 layout_transparente = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
 
 # ABA 1: HISTÓRICO
@@ -209,7 +209,7 @@ with tab3:
             st.plotly_chart(fig6, use_container_width=True)
             
         with col_prev2:
-            st.markdown("#### Previsão de Ventos para Drones 🚁")
+            st.markdown("#### Previsão de Ventos")
             fig_vento_prev = go.Figure()
             fig_vento_prev.add_trace(go.Scatter(x=df_futuro['Data'], y=df_futuro['Rajadas_kmh'], name='Rajadas Perigosas', mode='lines+markers', line=dict(color='#e67e22', width=2, dash='dot')))
             fig_vento_prev.add_trace(go.Bar(x=df_futuro['Data'], y=df_futuro['Vento_Max_kmh'], name='Vento Constante', marker_color='#f1c40f', opacity=0.6))
@@ -245,7 +245,7 @@ st.markdown(
         <a href='https://open-meteo.com/' target='_blank' style='color: #7f8c8d; text-decoration: none;'><b>Open-Meteo API</b></a> (Licença CC BY 4.0).<br>
         • <b>Dados Históricos:</b> Contém informações modificadas do programa europeu <i>Copernicus Climate Change Service</i> (Reanálise ERA5).<br>
         • <b>Dados de Previsão:</b> Provenientes do modelo global GFS, mantido pela <i>NOAA / NCEP</i> (Estados Unidos).<br><br>
-        <i>⚠️ Aviso Legal: O uso destes dados é indicado para consultas, estudos preliminares.</i>
+        <i>⚠️ Aviso Legal: O uso destes dados é indicado para consultas e estudos preliminares.</i>
     </div>
     """, 
     unsafe_allow_html=True
